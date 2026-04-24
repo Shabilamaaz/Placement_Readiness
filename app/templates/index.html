@@ -5,41 +5,60 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <div class="layout-wrap">
+        <div class="page-card page-card-wide">
+            <h2>Placement Prediction System</h2>
+            <div class="nav-links">
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('resume_analyzer') }}">Resume Analyzer</a>
+                <a href="{{ url_for('logout') }}">Logout</a>
+            </div>
 
-    <h2>Placement Prediction System</h2>
+            <p class="muted-text"><b>Last Prediction:</b> {{ last_prediction or "No prediction yet" }}</p>
 
-    <form action="/predict" method="post">
-        <input type="number" name="semester" placeholder="Semester" required><br><br>
-        <input type="number" step="0.1" name="cgpa" placeholder="CGPA" required><br><br>
-        <input type="number" name="attendance" placeholder="Attendance" required><br><br>
-        <input type="number" name="aptitude" placeholder="Aptitude Score" required><br><br>
-        <input type="number" name="coding" placeholder="Coding Score" required><br><br>
-        <input type="number" name="communication" placeholder="Communication Score" required><br><br>
-        <input type="number" name="projects" placeholder="Projects Count" required><br><br>
-        <input type="number" name="internships" placeholder="Internships (0/1)" required><br><br>
+            <form action="{{ url_for('predict') }}" method="post" class="grid-form">
+                <input type="number" name="semester" placeholder="Semester" required>
+                <input type="number" step="0.1" name="cgpa" placeholder="CGPA" required>
+                <input type="number" name="attendance" placeholder="Attendance" required>
+                <input type="number" name="aptitude" placeholder="Aptitude Score" required>
+                <input type="number" name="coding" placeholder="Coding Score" required>
+                <input type="number" name="communication" placeholder="Communication Score" required>
+                <input type="number" name="projects" placeholder="Projects Count" required>
+                <input type="number" name="internships" placeholder="Internships (0/1)" required>
+                <button type="submit" class="btn-primary full-width">Predict Placement</button>
+            </form>
 
-        <button type="submit">Predict</button>
-    </form>
+            {% if prediction_text %}
+            <div class="result {% if prediction_text == 'Placed' %}success{% else %}fail{% endif %}">
+                {{ prediction_text }} (Chance: {{ chance }}%)
+            </div>
+            {% endif %}
 
-    <!-- RESULT -->
-    {% if prediction_text %}
-    <div class="result {% if 'Placed' in prediction_text %}success{% else %}fail{% endif %}">
-        {{ prediction_text }}
+            {% if graph_image %}
+            <div class="graph-wrap">
+                <h3>Performance Graph</h3>
+                <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Performance graph">
+            </div>
+            {% endif %}
+
+            {% if suggestion %}
+            <div class="card-section">
+                <h3>Smart Suggestion</h3>
+                <p class="suggestion">{{ suggestion }}</p>
+            </div>
+            {% endif %}
+
+            {% if weekly_plan %}
+            <div class="card-section">
+                <h3>Weekly Plan (Mon-Fri)</h3>
+                <ul class="planner-list">
+                    {% for item in weekly_plan %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
     </div>
-
-    <!-- PLACEMENT CHANCE -->
-    <p><b>Placement Chance:</b> {{ chance }}%</p>
-
-    <!-- GRAPH -->
-    <div style="margin-top:20px;">
-        <img src="{{ url_for('static', filename='images/graph.png') }}" width="400">
-    </div>
-    {% endif %}
-
-    <!-- SUGGESTION -->
-    {% if suggestion %}
-    <p class="suggestion">{{ suggestion }}</p>
-    {% endif %}
-
 </body>
 </html>

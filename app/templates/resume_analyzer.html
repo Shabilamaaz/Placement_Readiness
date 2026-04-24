@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Resume Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="layout-wrap">
+    <div class="page-card page-card-wide">
+        <h2>Resume Analyzer</h2>
+        <p><b>User:</b> {{ username }}</p>
+        <div class="nav-links">
+            <a href="{{ url_for('home') }}">Make Prediction</a>
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <p class="flash-msg">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('resume_analyzer') }}" enctype="multipart/form-data">
+            <input type="file" name="resume_pdf" accept=".pdf" required>
+            <button type="submit" class="btn-primary">Analyze Resume</button>
+        </form>
+
+        {% if suggestions %}
+        <h3>Resume Improvement Tips</h3>
+        <ul class="planner-list">
+            {% for tip in suggestions %}
+            <li>{{ tip }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    </div>
+</body>
+</html>
