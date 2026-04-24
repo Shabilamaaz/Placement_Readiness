@@ -67,7 +67,7 @@ pip install flask scikit-learn pandas matplotlib reportlab
 ```bash
 python app/app.py
 ```
-4. Open in Browser
+### 4. Open in Browser
 ```bash
 http://127.0.0.1:5000
 ```
