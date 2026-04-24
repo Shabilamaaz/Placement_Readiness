@@ -6,37 +6,76 @@
 </head>
 <body>
     <div class="layout-wrap">
-    <div class="page-card page-card-wide">
-        <h2>Resume Analyzer</h2>
-        <p><b>User:</b> {{ username }}</p>
-        <div class="nav-links">
-            <a href="{{ url_for('home') }}">Make Prediction</a>
-            <a href="{{ url_for('dashboard') }}">Dashboard</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
+        <div class="page-card page-card-wide">
+            <h2>Resume Analyzer</h2>
+            <p><b>User:</b> {{ username }}</p>
+
+            <div class="nav-links">
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('resume_analyzer') }}">Resume Analyzer</a>
+                <a href="{{ url_for('profile') }}">Profile</a>
+                <a href="{{ url_for('companies') }}">Companies</a>
+                <a href="{{ url_for('leaderboard') }}">Leaderboard</a>
+                <a href="{{ url_for('admin') }}">Admin</a>
+                <a href="{{ url_for('logout') }}">Logout</a>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <p class="flash-msg">{{ message }}</p>
+                {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <form method="post" action="{{ url_for('resume_analyzer') }}" enctype="multipart/form-data" class="card-section">
+                <label class="muted-text">Upload your resume (PDF format)</label>
+                <input type="file" name="resume_pdf" accept=".pdf" required>
+                <button type="submit" class="btn-primary">Analyze Resume</button>
+            </form>
+
+            <div class="card-section">
+                <h3>Resume Score</h3>
+                <p>
+                    {% if resume_score is not none %}
+                        {{ resume_score }}/100
+                    {% else %}
+                        No score yet. Upload your resume to get score.
+                    {% endif %}
+                </p>
+            </div>
+
+            {% if detected_skills %}
+            <div class="card-section">
+                <h3>Detected Skills</h3>
+                <p>{{ detected_skills | join(", ") }}</p>
+            </div>
+            {% endif %}
+
+            <div class="card-section">
+                <h3>Missing Sections</h3>
+                {% if missing_sections %}
+                <ul class="planner-list">
+                    {% for section in missing_sections %}
+                    <li>{{ section }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p>No major missing sections found.</p>
+                {% endif %}
+            </div>
+
+            {% if suggestions %}
+            <div class="card-section">
+                <h3>Tips</h3>
+                <ul class="planner-list">
+                    {% for tip in suggestions %}
+                    <li>{{ tip }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
         </div>
-
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            {% for message in messages %}
-                <p class="flash-msg">{{ message }}</p>
-            {% endfor %}
-        {% endif %}
-        {% endwith %}
-
-        <form method="post" action="{{ url_for('resume_analyzer') }}" enctype="multipart/form-data">
-            <input type="file" name="resume_pdf" accept=".pdf" required>
-            <button type="submit" class="btn-primary">Analyze Resume</button>
-        </form>
-
-        {% if suggestions %}
-        <h3>Resume Improvement Tips</h3>
-        <ul class="planner-list">
-            {% for tip in suggestions %}
-            <li>{{ tip }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-    </div>
     </div>
 </body>
 </html>

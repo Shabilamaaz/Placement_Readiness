@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Leaderboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="layout-wrap">
+        <div class="page-card page-card-wide">
+            <h2 class="center-text">Top Performers Leaderboard</h2>
+
+            <div class="nav-links">
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('resume_analyzer') }}">Resume Analyzer</a>
+                <a href="{{ url_for('profile') }}">Profile</a>
+                <a href="{{ url_for('companies') }}">Companies</a>
+                <a href="{{ url_for('leaderboard') }}">Leaderboard</a>
+                <a href="{{ url_for('admin') }}">Admin</a>
+                <a href="{{ url_for('logout') }}">Logout</a>
+            </div>
+
+            {% if top_performers %}
+            <div class="table-wrap">
+                <table class="history-table">
+                    <tr>
+                        <th>Username</th>
+                        <th>Highest Chance (%)</th>
+                    </tr>
+                    {% for row in top_performers %}
+                    <tr>
+                        <td>{{ row["username"] }}</td>
+                        <td>{{ row["highest_chance"] }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            {% else %}
+            <p>No leaderboard data available yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
