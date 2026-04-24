@@ -58,3 +58,16 @@ A Flask-based web application that helps students analyze their placement readin
 ```bash
 git clone https://github.com/Shabilamaaz/Placement_Readiness.git
 cd Placement_Readiness
+```
+### 2. Install Dependencies
+```bash
+pip install flask scikit-learn pandas matplotlib reportlab
+```
+### 3. Run Application
+```bash
+python app/app.py
+```
+4. Open in Browser
+```bash
+http://127.0.0.1:5000
+```
