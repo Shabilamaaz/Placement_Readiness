@@ -1,4 +1,4 @@
-# 🚀 Placement Readiness Prediction System
+# 🚀 Placement Prediction System
 
 A Flask-based web application that helps students analyze their placement readiness using machine learning and smart suggestions.
 
