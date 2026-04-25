@@ -1,31 +1,31 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Signup</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="layout-wrap center-box">
-        <div class="page-card auth-card">
-            <h2>Create Account</h2>
-            <p class="muted-text">Start tracking predictions, suggestions, and resume improvements.</p>
+{% extends "base.html" %}
+{% block title %}Signup{% endblock %}
 
-            {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <p class="flash-msg">{{ message }}</p>
-                {% endfor %}
-            {% endif %}
-            {% endwith %}
-
-            <form method="post" action="{{ url_for('signup') }}">
-                <input type="text" name="username" placeholder="Username" required>
-                <input type="password" name="password" placeholder="Password" required>
-                <button type="submit" class="btn-primary full-width-btn">Create Account</button>
-            </form>
-
-            <p class="auth-link">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+{% block body %}
+<div class="layout-wrap center-box">
+    <div class="page-card auth-card">
+        <div class="page-head page-head--auth">
+            <div>
+                <h2>Create Account</h2>
+                <p class="muted-text">Start tracking predictions, suggestions, and resume improvements.</p>
+            </div>
         </div>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <p class="flash-msg">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('signup') }}">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit" class="btn-primary full-width-btn">Create Account</button>
+        </form>
+
+        <p class="auth-link">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}

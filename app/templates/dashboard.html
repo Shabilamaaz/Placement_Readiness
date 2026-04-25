@@ -1,135 +1,125 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="layout-wrap">
-        <div class="page-card page-card-wide">
-            <h2 class="center-text">Placement Readiness Dashboard</h2>
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
 
-            <div class="nav-links">
-                <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('resume_analyzer') }}">Resume Analyzer</a>
-                <a href="{{ url_for('profile') }}">Profile</a>
-                <a href="{{ url_for('companies') }}">Companies</a>
-                <a href="{{ url_for('leaderboard') }}">Leaderboard</a>
-                <a href="{{ url_for('admin') }}">Admin</a>
-                <a href="{{ url_for('logout') }}">Logout</a>
+{% block body %}
+<div class="layout-wrap">
+    <div class="page-card page-card-wide">
+        <div class="page-head">
+            <div>
+                <h2 class="center-text">Placement Readiness Dashboard</h2>
             </div>
-
-            {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <p class="flash-msg">{{ message }}</p>
-                {% endfor %}
-            {% endif %}
-            {% endwith %}
-
-            <div class="cards-grid">
-                <div class="card-section">
-                    <h3>Profile</h3>
-                    <p><b>Username:</b> {{ username }}</p>
-                    <p><b>Last Prediction:</b> {{ last_prediction }}</p>
-                    <p><b>Resume Score:</b> {{ resume_score if resume_score else "Not analyzed yet" }}</p>
-                    <p><b>Weak Areas:</b> {{ weak_areas }}</p>
-                </div>
-
-                <div class="card-section">
-                    <h3>Insights</h3>
-                    <p><b>Latest Suggestion:</b> {{ last_suggestion }}</p>
-                </div>
-            </div>
-
-            <div class="card-section">
-                <h3>Smart Suggestions</h3>
-                <p>{{ last_suggestion }}</p>
-            </div>
-
-            <div class="cards-grid">
-                <form action="{{ url_for('download_report') }}" method="get">
-                    <button class="primary-btn" type="submit">Download Report</button>
-                </form>
-                <form action="{{ url_for('send_email') }}" method="post">
-                    <input type="email" name="email" placeholder="Enter email" required>
-                    <button class="primary-btn" type="submit">Send Suggestions</button>
-                </form>
-            </div>
-
-            {% if graph_image %}
-            <div class="graph-wrap card-section">
-                <h3>Last Performance Graph</h3>
-                <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Prediction Graph">
-            </div>
-            {% endif %}
-
-            {% if weekly_plan %}
-            <div class="card-section">
-                <h3>Weekly Planner</h3>
-                <ul class="planner-list">
-                    {% for item in weekly_plan %}
-                    <li>{{ item }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-
-            {% if resume_suggestions %}
-            <div class="card-section">
-                <h3>Latest Resume Suggestions</h3>
-                <ul class="planner-list">
-                    {% for tip in resume_suggestions %}
-                    <li>{{ tip }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-
-            <h3>Prediction History</h3>
-            {% if history %}
-            <div class="table-wrap">
-                <table class="history-table">
-                    <tr>
-                        <th>Date</th>
-                        <th>CGPA</th>
-                        <th>Aptitude</th>
-                        <th>Coding</th>
-                        <th>Communication</th>
-                        <th>Projects</th>
-                        <th>Internships</th>
-                        <th>Result</th>
-                        <th>Chance (%)</th>
-                        <th>Action</th>
-                    </tr>
-                    {% for row in history %}
-                    <tr>
-                        <td>{{ row["created_at"] }}</td>
-                        <td>{{ row["cgpa"] }}</td>
-                        <td>{{ row["aptitude"] }}</td>
-                        <td>{{ row["coding"] }}</td>
-                        <td>{{ row["communication"] }}</td>
-                        <td>{{ row["projects"] }}</td>
-                        <td>{{ row["internships"] }}</td>
-                        <td>{{ row["result"] }}</td>
-                        <td>{{ row["chance"] }}</td>
-                        <td>
-                            <form method="post" action="{{ url_for('delete_history', history_id=row['id']) }}">
-                                <button type="submit" class="btn-danger small-btn">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </table>
-            </div>
-
-            <form method="post" action="{{ url_for('clear_history') }}" class="top-gap">
-                <button type="submit" class="btn-danger">Clear All History</button>
-            </form>
-            {% else %}
-            <p>No history yet. Start with your first prediction.</p>
-            {% endif %}
         </div>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <p class="flash-msg">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="cards-grid">
+            <div class="card-section">
+                <h3>Profile</h3>
+                <p><b>Username:</b> {{ username }}</p>
+                <p><b>Last Prediction:</b> {{ last_prediction }}</p>
+                <p><b>Resume Score:</b> {{ resume_score if resume_score else "Not analyzed yet" }}</p>
+                <p><b>Weak Areas:</b> {{ weak_areas }}</p>
+            </div>
+
+            <div class="card-section">
+                <h3>Insights</h3>
+                <p><b>Latest Suggestion:</b> {{ last_suggestion }}</p>
+            </div>
+        </div>
+
+        <div class="card-section">
+            <h3>Smart Suggestions</h3>
+            <p>{{ last_suggestion }}</p>
+        </div>
+
+        <div class="cards-grid">
+            <form action="{{ url_for('download_report') }}" method="get">
+                <button class="primary-btn" type="submit">Download Report</button>
+            </form>
+            <form action="{{ url_for('send_email') }}" method="post">
+                <input type="email" name="email" placeholder="Enter email" required>
+                <button class="primary-btn" type="submit">Send Suggestions</button>
+            </form>
+        </div>
+
+        {% if graph_image %}
+        <div class="graph-wrap card-section">
+            <h3>Last Performance Graph</h3>
+            <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Prediction Graph">
+        </div>
+        {% endif %}
+
+        {% if weekly_plan %}
+        <div class="card-section">
+            <h3>Weekly Planner</h3>
+            <ul class="planner-list">
+                {% for item in weekly_plan %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if resume_suggestions %}
+        <div class="card-section">
+            <h3>Latest Resume Suggestions</h3>
+            <ul class="planner-list">
+                {% for tip in resume_suggestions %}
+                <li>{{ tip }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <h3>Prediction History</h3>
+        {% if history %}
+        <div class="table-wrap">
+            <table class="history-table">
+                <tr>
+                    <th>Date</th>
+                    <th>CGPA</th>
+                    <th>Aptitude</th>
+                    <th>Coding</th>
+                    <th>Communication</th>
+                    <th>Projects</th>
+                    <th>Internships</th>
+                    <th>Result</th>
+                    <th>Chance (%)</th>
+                    <th>Action</th>
+                </tr>
+                {% for row in history %}
+                <tr>
+                    <td>{{ row["created_at"] }}</td>
+                    <td>{{ row["cgpa"] }}</td>
+                    <td>{{ row["aptitude"] }}</td>
+                    <td>{{ row["coding"] }}</td>
+                    <td>{{ row["communication"] }}</td>
+                    <td>{{ row["projects"] }}</td>
+                    <td>{{ row["internships"] }}</td>
+                    <td>{{ row["result"] }}</td>
+                    <td>{{ row["chance"] }}</td>
+                    <td>
+                        <form method="post" action="{{ url_for('delete_history', history_id=row['id']) }}">
+                            <button type="submit" class="btn-danger small-btn">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <form method="post" action="{{ url_for('clear_history') }}" class="top-gap">
+            <button type="submit" class="btn-danger">Clear All History</button>
+        </form>
+        {% else %}
+        <p>No history yet. Start with your first prediction.</p>
+        {% endif %}
     </div>
-</body>
-</html>
+</div>
+{% endblock %}
