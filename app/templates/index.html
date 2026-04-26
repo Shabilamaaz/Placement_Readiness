@@ -19,10 +19,6 @@
             <form action="{{ url_for('download_report') }}" method="get">
                 <button class="primary-btn" type="submit">Download Report</button>
             </form>
-            <form action="{{ url_for('send_email') }}" method="post">
-                <input type="email" name="email" placeholder="Enter email" required>
-                <button class="primary-btn" type="submit">Send Suggestions</button>
-            </form>
         </div>
 
         <form action="{{ url_for('predict') }}" method="post" class="grid-form" id="prediction-form">
@@ -33,8 +29,8 @@
             <input type="number" name="coding" placeholder="Coding Score" required>
             <input type="number" name="communication" placeholder="Communication Score" required>
             <input type="number" name="projects" placeholder="Projects Count" required>
-            <input type="number" name="internships" placeholder="Internships (0/1)" required>
-            <button type="submit" class="btn-primary full-width loading-btn" id="predict-btn">
+            <input type="number" name="internships" placeholder="Internships" required>
+            <button type="submit" class="btn-primary loading-btn" id="predict-btn">
                 <span class="btn-text">Predict Placement</span>
                 <span class="spinner hidden" id="predict-spinner"></span>
             </button>

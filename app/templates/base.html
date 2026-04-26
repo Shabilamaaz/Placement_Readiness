@@ -25,6 +25,7 @@
             {% if username %}
             <nav class="topnav" aria-label="Primary">
                 <a class="topnav__link {% if request.endpoint == 'dashboard' %}is-active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a class="topnav__link {% if request.endpoint == 'home' %}is-active{% endif %}" href="{{ url_for('home') }}">Career Toolkit</a>
                 <a class="topnav__link {% if request.endpoint == 'resume_analyzer' %}is-active{% endif %}" href="{{ url_for('resume_analyzer') }}">Resume Analyzer</a>
                 <a class="topnav__link {% if request.endpoint == 'profile' %}is-active{% endif %}" href="{{ url_for('profile') }}">Profile</a>
                 <a class="topnav__link {% if request.endpoint == 'companies' %}is-active{% endif %}" href="{{ url_for('companies') }}">Companies</a>

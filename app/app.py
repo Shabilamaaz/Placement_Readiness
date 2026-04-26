@@ -316,7 +316,7 @@ def home():
         "index.html",
         username=user["username"],
         last_prediction=user["last_prediction"] or "No prediction yet",
-        graph_image=user["graph_image"],
+        graph_image=None,
     )
 
 
@@ -365,6 +365,12 @@ def login():
 
 @app.route("/logout")
 def logout():
+    # Ensure the performance graph never persists across sessions.
+    if "user_id" in session:
+        conn = get_db_connection()
+        conn.execute("UPDATE users SET graph_image = NULL WHERE id = ?", (session["user_id"],))
+        conn.commit()
+        conn.close()
     session.clear()
     return redirect(url_for("login"))
 
@@ -418,7 +424,7 @@ def dashboard():
         weak_areas=weak_areas_text,
         resume_score=user["last_resume_score"],
         weekly_plan=weekly_plan,
-        graph_image=user["graph_image"],
+        graph_image=None,
         history=history,
         resume_suggestions=resume_suggestions,
     )
@@ -809,10 +815,10 @@ def predict():
         conn.execute(
             """
             UPDATE users
-            SET last_prediction = ?, graph_image = ?, last_suggestion = ?, last_weekly_plan = ?
+            SET last_prediction = ?, graph_image = NULL, last_suggestion = ?, last_weekly_plan = ?
             WHERE id = ?
             """,
-            (f"{output} | Chance: {chance}%", relative_graph_path, suggestion, weekly_plan_db, user["id"]),
+            (f"{output} | Chance: {chance}%", suggestion, weekly_plan_db, user["id"]),
         )
         conn.execute(
             """
