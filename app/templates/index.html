@@ -40,37 +40,40 @@
         <div class="result {% if prediction_text == 'Placed' %}success{% else %}fail{% endif %}">
             {{ prediction_text }} (Chance: {{ chance }}%)
         </div>
-        {% endif %}
 
-        {% if weak_areas %}
-        <div class="card-section">
-            <h3>Weak Areas</h3>
-            <p class="suggestion">{{ weak_areas }}</p>
-        </div>
-        {% endif %}
+        <div class="cards-grid" id="weekly-prep-planner">
+            <div class="card-section">
+                <h3>Insights (Weak/Strong)</h3>
+                {% if weak_areas %}
+                    <p><b>Weak Areas:</b> {{ weak_areas }}</p>
+                {% endif %}
+                {% if strong_areas %}
+                    <p><b>Strong Areas:</b> {{ strong_areas }}</p>
+                {% endif %}
+                {% if suggestion %}
+                    <div class="top-gap">
+                        <h3>Smart Suggestion</h3>
+                        <p class="suggestion">{{ suggestion }}</p>
+                    </div>
+                {% endif %}
 
-        {% if suggestion %}
-        <div class="card-section">
-            <h3>Smart Suggestion</h3>
-            <p class="suggestion">{{ suggestion }}</p>
-        </div>
-        {% endif %}
+                {% if graph_image %}
+                    <div class="graph-wrap top-gap">
+                        <h3>Performance Graph</h3>
+                        <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Performance graph">
+                    </div>
+                {% endif %}
+            </div>
 
-        {% if weekly_plan %}
-        <div class="card-section">
-            <h3>Weekly Plan (Mon-Fri)</h3>
-            <ul class="planner-list">
-                {% for item in weekly_plan %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-
-        {% if graph_image %}
-        <div class="graph-wrap">
-            <h3>Performance Graph</h3>
-            <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Performance graph">
+            <div class="card-section">
+                <div class="planner-head">
+                    <h3>Weekly Preparation Planner</h3>
+                    <a class="link-btn" href="{{ url_for('weekly_planner') }}">Generate Plan</a>
+                </div>
+                <div class="top-gap">
+                    <p class="muted-text">Planner is optional. Click “Generate Plan” to choose your duration (1–12 weeks) and get a full roadmap based on your latest scores.</p>
+                </div>
+            </div>
         </div>
         {% endif %}
     </div>

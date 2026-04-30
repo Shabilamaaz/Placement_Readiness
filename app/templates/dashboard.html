@@ -38,6 +38,19 @@
             <p>{{ last_suggestion }}</p>
         </div>
 
+        <div class="card-section">
+            <div class="planner-head">
+                <h3>Weekly Preparation Planner</h3>
+                <a class="link-btn" href="{{ url_for('weekly_planner') }}">Open Planner</a>
+            </div>
+            {% if latest_prep_plan %}
+                <p class="muted-text">Last generated: {{ latest_prep_plan["created_at"] }} · {{ latest_prep_plan["selected_duration"] }}-week · {{ latest_prep_plan["selected_focus_area"]|capitalize }}</p>
+                <a class="primary-btn small-btn" href="{{ url_for('weekly_planner_view', plan_id=latest_prep_plan['id']) }}">View last plan</a>
+            {% else %}
+                <p class="muted-text">Generate a realistic week-by-week roadmap (Mon–Sat) tailored for placement preparation.</p>
+            {% endif %}
+        </div>
+
         <div class="cards-grid">
             <form action="{{ url_for('download_report') }}" method="get">
                 <button class="primary-btn" type="submit">Download Report</button>
@@ -52,17 +65,6 @@
         <div class="graph-wrap card-section">
             <h3>Last Performance Graph</h3>
             <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Prediction Graph">
-        </div>
-        {% endif %}
-
-        {% if weekly_plan %}
-        <div class="card-section">
-            <h3>Weekly Planner</h3>
-            <ul class="planner-list">
-                {% for item in weekly_plan %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
         </div>
         {% endif %}
 

@@ -8,6 +8,7 @@ import datetime
 import io
 import smtplib
 import textwrap
+import json
 from email.mime.text import MIMEText
 from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file
 import pickle
@@ -122,6 +123,20 @@ def init_db():
     ensure_column_exists(conn, "resume_analysis", "suggestions", "TEXT")
     ensure_column_exists(conn, "resume_analysis", "created_at", "TEXT")
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS preparation_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            selected_duration INTEGER NOT NULL,
+            selected_focus_area TEXT NOT NULL,
+            generated_plan TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -168,6 +183,22 @@ def get_latest_prediction_for_user(user_id):
     return latest
 
 
+def get_latest_prediction_scores_for_user(user_id):
+    conn = get_db_connection()
+    row = conn.execute(
+        """
+        SELECT cgpa, aptitude, coding, communication, projects, internships, COALESCE(created_at, date) AS created_at
+        FROM prediction_history
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    return row
+
+
 def get_weak_areas(cgpa, coding, communication):
     weak_areas = []
     if cgpa < 7:
@@ -179,10 +210,31 @@ def get_weak_areas(cgpa, coding, communication):
     return weak_areas
 
 
+def get_strong_areas(cgpa, aptitude, coding, communication, projects):
+    strong = []
+    if cgpa is not None and cgpa >= 7.5:
+        strong.append("Academics")
+    if aptitude is not None and aptitude >= 75:
+        strong.append("Aptitude")
+    if coding is not None and coding >= 75:
+        strong.append("Coding")
+    if communication is not None and communication >= 75:
+        strong.append("Communication")
+    if projects is not None and projects >= 2:
+        strong.append("Projects")
+    return strong
+
+
 def build_weak_area_text(weak_areas):
     if not weak_areas:
         return "No major weak areas detected."
     return ", ".join(weak_areas)
+
+
+def build_strong_area_text(strong_areas):
+    if not strong_areas:
+        return "No major strong areas detected yet. Keep improving consistently."
+    return ", ".join(strong_areas)
 
 
 def build_suggestion_and_weekly_plan(cgpa, coding, communication, projects):
@@ -304,6 +356,471 @@ def get_latest_resume_analysis_for_user(user_id):
     return latest_resume
 
 
+def get_preparation_plans_for_user(user_id, limit=10):
+    conn = get_db_connection()
+    rows = conn.execute(
+        """
+        SELECT id, selected_duration, selected_focus_area, created_at
+        FROM preparation_plans
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (user_id, int(limit)),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def get_preparation_plan_by_id(user_id, plan_id):
+    conn = get_db_connection()
+    row = conn.execute(
+        """
+        SELECT id, selected_duration, selected_focus_area, generated_plan, created_at
+        FROM preparation_plans
+        WHERE user_id = ? AND id = ?
+        """,
+        (user_id, plan_id),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def get_latest_preparation_plan_for_user(user_id):
+    conn = get_db_connection()
+    row = conn.execute(
+        """
+        SELECT id, selected_duration, selected_focus_area, generated_plan, created_at
+        FROM preparation_plans
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def _hours_split(total_hours, weights):
+    """
+    Split total_hours into len(weights) parts, rounded to 0.5h.
+    Ensures sum(parts) == total_hours (within rounding).
+    """
+    if total_hours <= 0:
+        return [0 for _ in weights]
+    w_sum = sum(weights) if sum(weights) > 0 else 1
+    raw = [(total_hours * (w / w_sum)) for w in weights]
+    parts = [max(0.5, round(x * 2) / 2) for x in raw]
+    diff = round((total_hours - sum(parts)) * 2) / 2
+    # Adjust by 0.5h steps to match total.
+    idx = 0
+    while abs(diff) >= 0.5 and idx < 50:
+        j = idx % len(parts)
+        if diff > 0:
+            parts[j] += 0.5
+            diff -= 0.5
+        else:
+            if parts[j] - 0.5 >= 0.5:
+                parts[j] -= 0.5
+                diff += 0.5
+        idx += 1
+    return parts
+
+
+def generate_weekly_preparation_plan(duration_weeks, focus_area):
+    duration_weeks = int(duration_weeks)
+    if duration_weeks not in (4, 6):
+        duration_weeks = 4
+
+    focus_area = (focus_area or "mixed").strip().lower()
+    allowed_focus = {"aptitude", "coding", "communication", "core", "mixed"}
+    if focus_area not in allowed_focus:
+        focus_area = "mixed"
+
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    # Realistic hours: steady + slightly increasing, with Saturday a bit heavier.
+    if duration_weeks == 4:
+        base_hours = [3.0, 3.5, 4.0, 4.5]
+    else:
+        base_hours = [3.0, 3.5, 4.0, 4.5, 5.0, 5.5]
+
+    week_stage = {
+        1: ("Fundamentals", "Build foundations and consistency"),
+        2: ("Core Practice", "Strengthen basics with timed practice"),
+        3: ("Problem Solving", "Improve speed + accuracy with patterns"),
+        4: ("Interview Readiness", "Mocks + revision + confidence building"),
+        5: ("Advanced Prep", "Harder sets + deeper concepts + mocks"),
+        6: ("Final Sprint", "Full mocks + weak-area fixes + polish"),
+    }
+
+    coding_curriculum = {
+        "Fundamentals": ["Time/Space Complexity", "Arrays", "Strings", "Two Pointers", "Hashing Basics"],
+        "Core Practice": ["Linked List", "Stack/Queue", "Sliding Window", "Binary Search", "Sorting Patterns"],
+        "Problem Solving": ["Trees (BT/BST)", "Heaps", "Greedy Basics", "Recursion/Backtracking", "Graph Basics"],
+        "Interview Readiness": ["Dynamic Programming Basics", "Graph Traversals", "Company Patterns", "Mock Interviews", "Revision Sets"],
+        "Advanced Prep": ["DP Patterns", "Advanced Graphs", "Hard Arrays/Strings", "System Design Lite", "CS Fundamentals Review"],
+        "Final Sprint": ["Full-length Mock Coding", "Speed Drills", "Revision + Notes", "Behavioral + HR", "Project Polishing"],
+    }
+
+    aptitude_curriculum = {
+        "Fundamentals": ["Percentages", "Ratio/Proportion", "Average", "Number System", "Grammar Basics"],
+        "Core Practice": ["Time & Work", "Speed/Distance", "Profit & Loss", "Blood Relations", "Reading Comprehension"],
+        "Problem Solving": ["Permutation/Combination", "Probability", "Data Interpretation", "Seating Arrangement", "Critical Reasoning"],
+        "Interview Readiness": ["Mixed Timed Sets", "Error Log Revision", "Mock Aptitude Test", "Verbal Sprint", "Weak-topic Fixes"],
+        "Advanced Prep": ["Advanced DI", "Puzzle Sets", "High Difficulty Quant", "Verbal + Logic Mix", "Full Sectionals"],
+        "Final Sprint": ["Full-length Aptitude Mocks", "Speed/Accuracy Drills", "Revision + Formula Sheet", "Weak-area Sets", "Stress-test Practice"],
+    }
+
+    communication_curriculum = {
+        "Fundamentals": ["Self Introduction", "Basic HR Questions", "Communication Warm-up", "Listening + Clarity", "Confidence Building"],
+        "Core Practice": ["STAR Stories", "Project Explanation", "GD Basics", "Tone + Pace", "Email/LinkedIn Basics"],
+        "Problem Solving": ["Mock HR Round", "Case Questions", "Negotiation Basics", "Handling Pressure", "Communication Feedback"],
+        "Interview Readiness": ["Mock Interviews", "Resume Walkthrough", "Strength/Weakness", "Why Company/Role", "Closing Questions"],
+        "Advanced Prep": ["Mock + Feedback Loop", "Cross-questioning", "Leadership Examples", "Conflict Questions", "Polish & Presence"],
+        "Final Sprint": ["Daily Mock/Practice", "HR Rapid-fire", "Confidence Drills", "Final Resume/Portfolio", "Interview Day Routine"],
+    }
+
+    core_curriculum = {
+        "Fundamentals": ["OOP Basics", "DBMS Basics", "OS Basics", "CN Basics", "SQL Practice"],
+        "Core Practice": ["OOP Design", "Normalization/Indexing", "Processes/Threads", "TCP/UDP", "SQL Joins/Queries"],
+        "Problem Solving": ["Deadlocks/Scheduling", "Transactions/ACID", "HTTP + DNS", "Design Principles", "SQL Case Sets"],
+        "Interview Readiness": ["Core Subject Viva", "Revision Notes", "SQL Timed Tests", "Mock Core Interview", "Mixed Q&A"],
+        "Advanced Prep": ["Concurrency Deep Dive", "Query Optimization", "Network Troubleshooting", "OOP Patterns", "System Basics"],
+        "Final Sprint": ["Core Rapid Revision", "Mixed Mock Q&A", "SQL + DBMS Sprint", "OS/CN Flashcards", "Final Weak-area Fixes"],
+    }
+
+    resource_map = {
+        "coding": ["LeetCode", "HackerRank", "CodeChef", "GeeksforGeeks", "Mock interview"],
+        "aptitude": ["Aptitude practice", "Timed sectionals", "Mock aptitude test"],
+        "communication": ["HR questions", "Mock interview", "GD practice", "Speaking practice"],
+        "core": ["Core notes", "Previous questions", "SQL practice", "Mock interview"],
+        "mixed": ["LeetCode", "Aptitude practice", "HR questions", "Project work", "Mock interview"],
+    }
+
+    def pick_topics(stage_name):
+        if focus_area == "coding":
+            return coding_curriculum[stage_name]
+        if focus_area == "aptitude":
+            return aptitude_curriculum[stage_name]
+        if focus_area == "communication":
+            return communication_curriculum[stage_name]
+        if focus_area == "core":
+            return core_curriculum[stage_name]
+        # mixed: blend
+        return [
+            coding_curriculum[stage_name][0],
+            aptitude_curriculum[stage_name][0],
+            communication_curriculum[stage_name][0],
+            core_curriculum[stage_name][0],
+        ]
+
+    def focus_weights():
+        if focus_area == "coding":
+            return ("Coding", [0.75, 0.25])
+        if focus_area == "aptitude":
+            return ("Aptitude", [0.7, 0.3])
+        if focus_area == "communication":
+            return ("Communication", [0.7, 0.3])
+        if focus_area == "core":
+            return ("Core Subjects", [0.7, 0.3])
+        return ("Mixed", [0.4, 0.25, 0.2, 0.15])
+
+    plan = {
+        "duration_weeks": duration_weeks,
+        "focus_area": focus_area,
+        "weeks": [],
+        "notes": "Sunday is optional for rest + light revision. Keep weekdays consistent and track errors in a notebook.",
+    }
+
+    for w in range(1, duration_weeks + 1):
+        stage_name = week_stage.get(w, week_stage[4])[0]
+        stage_tag, stage_goal = week_stage.get(w, week_stage[4])
+        topics_pool = pick_topics(stage_name)
+
+        week_obj = {"week": w, "stage": stage_tag, "goal": stage_goal, "days": []}
+        for d_i, day in enumerate(day_names):
+            total = base_hours[w - 1] + (0.5 if day == "Saturday" else 0.0)
+            total = float(total)
+
+            if focus_area == "mixed":
+                # 4 blocks: coding/aptitude/communication/core
+                blocks = ["Coding", "Aptitude", "Communication", "Core"]
+                split = _hours_split(total, focus_weights()[1])
+                topics = [
+                    {"topic": blocks[0] + ": " + topics_pool[0], "hours": split[0]},
+                    {"topic": blocks[1] + ": " + topics_pool[1], "hours": split[1]},
+                    {"topic": blocks[2] + ": " + topics_pool[2], "hours": split[2]},
+                    {"topic": blocks[3] + ": " + topics_pool[3], "hours": split[3]},
+                ]
+                practice = [
+                    {"type": "Timed practice", "style": "LeetCode" if split[0] >= 1 else "HackerRank"},
+                    {"type": "Sectional practice", "style": "Aptitude practice"},
+                    {"type": "Speaking/HR", "style": "HR questions"},
+                    {"type": "Concept Q&A", "style": "Core notes"},
+                ]
+            else:
+                area_label, weights = focus_weights()
+                split = _hours_split(total, weights)
+                primary_topic = topics_pool[(w + d_i) % len(topics_pool)]
+                secondary_topic = topics_pool[(w + d_i + 1) % len(topics_pool)]
+                topics = [
+                    {"topic": f"{area_label}: {primary_topic}", "hours": split[0]},
+                    {"topic": f"{area_label}: {secondary_topic} (practice set)", "hours": split[1]},
+                ]
+                styles = resource_map.get(focus_area, resource_map["mixed"])
+                practice = [
+                    {"type": "Topic learning + notes", "style": styles[0]},
+                    {"type": "Timed practice", "style": styles[1] if len(styles) > 1 else styles[0]},
+                ]
+
+            # Add week-specific interview readiness items progressively.
+            extras = []
+            if w >= max(3, duration_weeks - 2):
+                extras.append({"type": "Mock", "style": "Mock interview"})
+            if w >= 2 and focus_area in ("coding", "mixed"):
+                extras.append({"type": "Revision", "style": "Error-log review"})
+            if w >= 2 and focus_area in ("communication", "mixed"):
+                extras.append({"type": "HR prep", "style": "Answer framework (STAR)"})
+            if w >= 3 and focus_area in ("mixed", "coding"):
+                extras.append({"type": "Project", "style": "Project work"})
+
+            # Keep Saturday as review + mock heavy.
+            if day == "Saturday":
+                extras = [{"type": "Weekly review", "style": "Revision + error log"}, {"type": "Mock", "style": "Mock interview"}] + extras
+
+            day_obj = {
+                "day": day,
+                "total_hours": total,
+                "topics": topics,
+                "practice": practice + extras,
+                "difficulty": "Beginner" if w == 1 else ("Intermediate" if w <= max(3, duration_weeks - 1) else "Advanced"),
+            }
+            week_obj["days"].append(day_obj)
+
+        plan["weeks"].append(week_obj)
+
+    return plan
+
+
+def _clamp_int(value, min_v, max_v, default):
+    try:
+        iv = int(value)
+    except Exception:
+        return default
+    return max(min_v, min(max_v, iv))
+
+
+def _clamp_float(value, min_v, max_v, default=None):
+    if value is None or value == "":
+        return default
+    try:
+        fv = float(value)
+    except Exception:
+        return default
+    return max(min_v, min(max_v, fv))
+
+
+def _normalized_weakness(score, weak_threshold=70.0):
+    """
+    score: 0..100 where higher is better
+    returns 0..1 where higher means weaker
+    """
+    if score is None:
+        return 0.35
+    score = max(0.0, min(100.0, float(score)))
+    if score >= weak_threshold:
+        return 0.15
+    # If score is low, increase weakness
+    return min(1.0, (weak_threshold - score) / weak_threshold + 0.25)
+
+
+def generate_personalized_preparation_plan(duration_weeks, profile):
+    """
+    Personalized mixed plan (Mon-Sat) based on user's scores.
+    duration_weeks: 1..12
+    profile: dict with cgpa, aptitude, coding, communication, core(optional), projects(optional)
+    """
+    duration_weeks = _clamp_int(duration_weeks, 1, 12, 4)
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    # Hours ramp: realistic, slightly increasing by weeks.
+    # Week-1 starts ~3h/day, week-12 ends ~6h/day, Saturday +0.5h.
+    def week_base_hours(w):
+        if duration_weeks == 1:
+            return 3.5
+        return round(3.0 + (w - 1) * (3.0 / (duration_weeks - 1)), 1)  # 3.0 -> 6.0
+
+    stages = [
+        ("Fundamentals", "Build foundations and consistency"),
+        ("Core Practice", "Strengthen basics with timed practice"),
+        ("Problem Solving", "Improve speed + accuracy with patterns"),
+        ("Advanced", "Push difficulty, fill gaps, and build stamina"),
+        ("Mocks & Interview", "Mocks + revision + interview readiness"),
+        ("Final Sprint", "Full mocks + weak-area fixes + polish"),
+    ]
+
+    coding_curriculum = {
+        "Fundamentals": ["Time/Space Complexity", "Arrays", "Strings", "Two Pointers", "Hashing Basics"],
+        "Core Practice": ["Linked List", "Stack/Queue", "Sliding Window", "Binary Search", "Sorting Patterns"],
+        "Problem Solving": ["Trees (BT/BST)", "Heaps", "Greedy Basics", "Recursion/Backtracking", "Graph Basics"],
+        "Advanced": ["DP Patterns", "Advanced Graphs", "Hard Arrays/Strings", "System Design Lite", "Company Patterns"],
+        "Mocks & Interview": ["Mock Coding Round", "Revision Sets", "Company-wise Sheets", "CS Fundamentals Review", "Speed Drills"],
+        "Final Sprint": ["Full-length Mock Coding", "Error-log Marathon", "Revision + Notes", "Project Polishing", "Interview Day Routine"],
+    }
+
+    aptitude_curriculum = {
+        "Fundamentals": ["Percentages", "Ratio/Proportion", "Average", "Number System", "Grammar Basics"],
+        "Core Practice": ["Time & Work", "Speed/Distance", "Profit & Loss", "Blood Relations", "Reading Comprehension"],
+        "Problem Solving": ["Permutation/Combination", "Probability", "Data Interpretation", "Seating Arrangement", "Critical Reasoning"],
+        "Advanced": ["Advanced DI", "Puzzle Sets", "High Difficulty Quant", "Verbal + Logic Mix", "Full Sectionals"],
+        "Mocks & Interview": ["Mock Aptitude Test", "Mixed Timed Sets", "Error Log Revision", "Verbal Sprint", "Weak-topic Fixes"],
+        "Final Sprint": ["Full-length Aptitude Mocks", "Speed/Accuracy Drills", "Revision + Formula Sheet", "Weak-area Sets", "Stress-test Practice"],
+    }
+
+    communication_curriculum = {
+        "Fundamentals": ["Self Introduction", "Basic HR Questions", "Communication Warm-up", "Listening + Clarity", "Confidence Building"],
+        "Core Practice": ["STAR Stories", "Project Explanation", "GD Basics", "Tone + Pace", "Resume Walkthrough"],
+        "Problem Solving": ["Mock HR Round", "Handling Pressure", "Cross-questioning", "Behavioral Answers", "Communication Feedback"],
+        "Advanced": ["Mock + Feedback Loop", "Leadership Examples", "Conflict Questions", "Negotiation Basics", "Presence & Delivery"],
+        "Mocks & Interview": ["Mock Interviews", "Why Company/Role", "Strength/Weakness", "Closing Questions", "Follow-up Practice"],
+        "Final Sprint": ["Daily Mock/Practice", "HR Rapid-fire", "Confidence Drills", "Final Resume/Portfolio", "Interview Day Routine"],
+    }
+
+    core_curriculum = {
+        "Fundamentals": ["OOP Basics", "DBMS Basics", "OS Basics", "CN Basics", "SQL Practice"],
+        "Core Practice": ["OOP Design", "Normalization/Indexing", "Processes/Threads", "TCP/UDP", "SQL Joins/Queries"],
+        "Problem Solving": ["Deadlocks/Scheduling", "Transactions/ACID", "HTTP + DNS", "OOP Principles", "SQL Case Sets"],
+        "Advanced": ["Concurrency Deep Dive", "Query Optimization", "Network Troubleshooting", "OOP Patterns", "System Basics"],
+        "Mocks & Interview": ["Core Subject Viva", "Mixed Q&A", "SQL Timed Tests", "Mock Core Interview", "Revision Notes"],
+        "Final Sprint": ["Core Rapid Revision", "Mixed Mock Q&A", "SQL + DBMS Sprint", "OS/CN Flashcards", "Final Weak-area Fixes"],
+    }
+
+    # Build weights from weakness (more weak -> more time).
+    weaknesses = {
+        "coding": _normalized_weakness(profile.get("coding")),
+        "aptitude": _normalized_weakness(profile.get("aptitude")),
+        "communication": _normalized_weakness(profile.get("communication")),
+        "core": _normalized_weakness(profile.get("core")),
+    }
+    # Convert weakness to weights (ensure non-zero).
+    raw = {k: max(0.12, v) for k, v in weaknesses.items()}
+    total_w = sum(raw.values()) or 1.0
+    weights = [raw["coding"] / total_w, raw["aptitude"] / total_w, raw["communication"] / total_w, raw["core"] / total_w]
+
+    # Stage selection based on progress ratio.
+    def stage_for_week(w):
+        if duration_weeks == 1:
+            return stages[0]
+        p = (w - 1) / (duration_weeks - 1)
+        idx = 0
+        if p < 0.22:
+            idx = 0
+        elif p < 0.42:
+            idx = 1
+        elif p < 0.62:
+            idx = 2
+        elif p < 0.78:
+            idx = 3
+        elif p < 0.92:
+            idx = 4
+        else:
+            idx = 5
+        return stages[idx]
+
+    plan = {
+        "duration_weeks": duration_weeks,
+        "focus_area": "personalized",
+        "profile": {
+            "cgpa": profile.get("cgpa"),
+            "aptitude": profile.get("aptitude"),
+            "coding": profile.get("coding"),
+            "communication": profile.get("communication"),
+            "core": profile.get("core"),
+            "projects": profile.get("projects"),
+        },
+        "weights": {
+            "coding": round(weights[0], 3),
+            "aptitude": round(weights[1], 3),
+            "communication": round(weights[2], 3),
+            "core": round(weights[3], 3),
+        },
+        "weeks": [],
+        "notes": "Sunday is optional for rest + light revision. Keep an error-log and revise it every Saturday.",
+    }
+
+    for w in range(1, duration_weeks + 1):
+        stage_tag, stage_goal = stage_for_week(w)
+        week_obj = {"week": w, "stage": stage_tag, "goal": stage_goal, "days": []}
+
+        for d_i, day in enumerate(day_names):
+            total_hours = float(week_base_hours(w) + (0.5 if day == "Saturday" else 0.0))
+            split = _hours_split(total_hours, weights)
+
+            coding_topic = coding_curriculum[stage_tag][(w + d_i) % len(coding_curriculum[stage_tag])]
+            apt_topic = aptitude_curriculum[stage_tag][(w + d_i) % len(aptitude_curriculum[stage_tag])]
+            comm_topic = communication_curriculum[stage_tag][(w + d_i) % len(communication_curriculum[stage_tag])]
+            core_topic = core_curriculum[stage_tag][(w + d_i) % len(core_curriculum[stage_tag])]
+
+            topics = [
+                {"topic": f"Coding: {coding_topic}", "hours": split[0]},
+                {"topic": f"Aptitude: {apt_topic}", "hours": split[1]},
+                {"topic": f"Communication: {comm_topic}", "hours": split[2]},
+                {"topic": f"Core: {core_topic}", "hours": split[3]},
+            ]
+
+            practice = [
+                {"type": "Timed practice", "style": "LeetCode" if split[0] >= 1 else "HackerRank"},
+                {"type": "Sectional practice", "style": "Aptitude practice"},
+                {"type": "Speaking/HR", "style": "HR questions"},
+                {"type": "Concept Q&A", "style": "Core notes"},
+            ]
+
+            # Progressive extras
+            if stage_tag in ("Mocks & Interview", "Final Sprint") or w >= max(3, duration_weeks - 2):
+                practice.append({"type": "Mock", "style": "Mock interview"})
+            if w >= 2:
+                practice.append({"type": "Revision", "style": "Error-log review"})
+            if profile.get("projects") is not None and int(profile.get("projects") or 0) < 2 and w >= 2:
+                practice.append({"type": "Project", "style": "Project work"})
+            if day == "Saturday":
+                practice = [
+                    {"type": "Weekly review", "style": "Revision + error log"},
+                    {"type": "Mock", "style": "Mock interview"},
+                ] + practice
+
+            difficulty = "Beginner" if w <= max(1, int(duration_weeks * 0.25)) else ("Intermediate" if w <= max(2, int(duration_weeks * 0.7)) else "Advanced")
+
+            week_obj["days"].append(
+                {
+                    "day": day,
+                    "total_hours": total_hours,
+                    "topics": topics,
+                    "practice": practice,
+                    "difficulty": difficulty,
+                }
+            )
+
+        plan["weeks"].append(week_obj)
+
+    return plan
+
+
+def summarize_preparation_plan_for_message(plan):
+    if not plan or not isinstance(plan, dict):
+        return "No preparation plan found yet."
+    weeks = plan.get("weeks") or []
+    if not weeks:
+        return "No preparation plan found yet."
+    w1 = weeks[0]
+    day1 = (w1.get("days") or [{}])[0]
+    topics = day1.get("topics") or []
+    topic_text = ", ".join([t.get("topic", "") for t in topics if t.get("topic")][:3]).strip()
+    hours = day1.get("total_hours")
+    return f"{plan.get('duration_weeks')} weeks · {plan.get('focus_area', 'mixed').capitalize()} · Week 1 starts with ~{hours} hrs/day. Sample topics: {topic_text}."
+
+
 init_db()
 
 
@@ -318,6 +835,49 @@ def home():
         last_prediction=user["last_prediction"] or "No prediction yet",
         graph_image=None,
     )
+
+
+@app.route("/career-toolkit/planner", methods=["POST"])
+def career_toolkit_planner():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    duration = _clamp_int(request.form.get("duration_weeks"), 1, 12, 4)
+
+    latest = get_latest_prediction_scores_for_user(user["id"])
+    cgpa = _clamp_float(request.form.get("cgpa"), 0.0, 10.0, default=(latest["cgpa"] if latest else None))
+    aptitude = _clamp_float(request.form.get("aptitude"), 0.0, 100.0, default=(latest["aptitude"] if latest else None))
+    coding = _clamp_float(request.form.get("coding"), 0.0, 100.0, default=(latest["coding"] if latest else None))
+    communication = _clamp_float(request.form.get("communication"), 0.0, 100.0, default=(latest["communication"] if latest else None))
+    # If user doesn't provide core score, derive from CGPA lightly.
+    core = _clamp_float(request.form.get("core"), 0.0, 100.0, default=(min(100.0, (cgpa or 7.0) * 10.0) if cgpa is not None else None))
+    projects = _clamp_int(request.form.get("projects"), 0, 20, default=(latest["projects"] if latest else 0))
+
+    profile = {
+        "cgpa": cgpa,
+        "aptitude": aptitude,
+        "coding": coding,
+        "communication": communication,
+        "core": core,
+        "projects": projects,
+    }
+
+    plan = generate_personalized_preparation_plan(duration, profile)
+    created_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db_connection()
+    conn.execute(
+        """
+        INSERT INTO preparation_plans (user_id, selected_duration, selected_focus_area, generated_plan, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (user["id"], int(plan["duration_weeks"]), "personalized", json.dumps(plan), created_at),
+    )
+    conn.commit()
+    plan_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.close()
+    flash("Personalized weekly planner generated and saved.")
+    return redirect(url_for("home", plan_id=plan_id))
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -408,9 +968,7 @@ def dashboard():
         weak_areas = get_weak_areas(history[0]["cgpa"], history[0]["coding"], history[0]["communication"])
         weak_areas_text = build_weak_area_text(weak_areas)
 
-    weekly_plan = []
-    if user["last_weekly_plan"]:
-        weekly_plan = [item for item in user["last_weekly_plan"].split("||") if item]
+    latest_prep_plan = get_latest_preparation_plan_for_user(user["id"])
 
     resume_suggestions = []
     if latest_resume and latest_resume["suggestions"]:
@@ -423,11 +981,37 @@ def dashboard():
         last_suggestion=user["last_suggestion"] or "No suggestions yet",
         weak_areas=weak_areas_text,
         resume_score=user["last_resume_score"],
-        weekly_plan=weekly_plan,
+        latest_prep_plan=latest_prep_plan,
         graph_image=None,
         history=history,
         resume_suggestions=resume_suggestions,
     )
+
+
+@app.route("/preparation-planner", methods=["GET", "POST"])
+def preparation_planner():
+    # Kept for backward-compatibility. Planner now lives inside Career Toolkit.
+    return redirect(url_for("home"))
+
+
+@app.route("/preparation-planner/<int:plan_id>")
+def view_preparation_plan(plan_id):
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    row = get_preparation_plan_by_id(user["id"], plan_id)
+    if not row:
+        flash("Plan not found.")
+        return redirect(url_for("home"))
+
+    try:
+        plan = json.loads(row["generated_plan"]) if row["generated_plan"] else None
+    except Exception:
+        plan = None
+
+    # Viewer kept for backward-compatibility; show inside Career Toolkit.
+    return redirect(url_for("home", plan_id=row["id"]) + "#weekly-prep-planner")
 
 
 @app.route("/download_report")
@@ -459,8 +1043,14 @@ def download_report():
             weak_areas = get_weak_areas(latest_row["cgpa"], latest_row["coding"], latest_row["communication"])
             weak_areas_text = build_weak_area_text(weak_areas)
 
-    weekly_plan_text = user["last_weekly_plan"].replace("||", " | ") if user["last_weekly_plan"] else "No weekly plan yet"
     suggestion_text = user["last_suggestion"] or "No suggestions yet"
+    latest_plan_row = get_latest_preparation_plan_for_user(user["id"])
+    prep_plan_summary = "No preparation plan yet"
+    if latest_plan_row and latest_plan_row["generated_plan"]:
+        try:
+            prep_plan_summary = summarize_preparation_plan_for_message(json.loads(latest_plan_row["generated_plan"]))
+        except Exception:
+            prep_plan_summary = "Preparation plan found but could not be summarized."
 
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
@@ -477,7 +1067,7 @@ def download_report():
         f"Placement Chance: {placement_chance}",
         f"Weak Areas: {weak_areas_text}",
         f"Suggestions: {suggestion_text}",
-        f"Weekly Plan: {weekly_plan_text}",
+        f"Preparation Planner: {prep_plan_summary}",
     ]
 
     for line in lines:
@@ -515,15 +1105,21 @@ def send_email():
         return redirect(url_for("dashboard"))
 
     suggestion = user["last_suggestion"] or "No suggestions yet."
-    weekly_plan = user["last_weekly_plan"].replace("||", "\n- ") if user["last_weekly_plan"] else "No weekly plan yet."
+    latest_plan_row = get_latest_preparation_plan_for_user(user["id"])
+    prep_plan_summary = "No preparation plan yet."
+    if latest_plan_row and latest_plan_row["generated_plan"]:
+        try:
+            prep_plan_summary = summarize_preparation_plan_for_message(json.loads(latest_plan_row["generated_plan"]))
+        except Exception:
+            prep_plan_summary = "Preparation plan found but could not be summarized."
     body = (
         f"Hello {user['username']},\n\n"
         f"Here are your latest placement suggestions:\n{suggestion}\n\n"
-        f"Weekly Plan:\n- {weekly_plan}\n"
+        f"Weekly Preparation Planner:\n{prep_plan_summary}\n"
     )
 
     message = MIMEText(body)
-    message["Subject"] = "Your Placement Suggestions"
+    message["Subject"] = "Your Placement Suggestions & Preparation Plan"
     message["From"] = smtp_email
     message["To"] = recipient_email
 
@@ -590,24 +1186,8 @@ def admin():
 
 @app.route("/leaderboard")
 def leaderboard():
-    user = get_current_user()
-    if not user:
-        return redirect(url_for("login"))
-
-    conn = get_db_connection()
-    top_performers = conn.execute(
-        """
-        SELECT u.username, MAX(p.chance) AS highest_chance
-        FROM users u
-        JOIN prediction_history p ON p.user_id = u.id
-        GROUP BY u.id, u.username
-        ORDER BY highest_chance DESC
-        LIMIT 5
-        """
-    ).fetchall()
-    conn.close()
-
-    return render_template("leaderboard.html", username=user["username"], top_performers=top_performers)
+    # Leaderboard section removed from the product.
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/profile")
@@ -811,6 +1391,14 @@ def predict():
         )
         weekly_plan_db = "||".join(weekly_plan)
 
+        strong_areas = get_strong_areas(
+            cgpa=features[1],
+            aptitude=features[3],
+            coding=features[4],
+            communication=features[5],
+            projects=features[6],
+        )
+
         conn = get_db_connection()
         conn.execute(
             """
@@ -820,6 +1408,7 @@ def predict():
             """,
             (f"{output} | Chance: {chance}%", suggestion, weekly_plan_db, user["id"]),
         )
+
         conn.execute(
             """
             INSERT INTO prediction_history
@@ -852,12 +1441,89 @@ def predict():
             chance=chance,
             suggestion=suggestion,
             weak_areas=build_weak_area_text(weak_areas),
+            strong_areas=build_strong_area_text(strong_areas),
             weekly_plan=weekly_plan,
             graph_image=relative_graph_path,
             last_prediction=f"{output} | Chance: {chance}%",
         )
     except Exception as exc:
         return str(exc)
+
+
+@app.route("/weekly-planner", methods=["GET", "POST"])
+def weekly_planner():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    latest = get_latest_prediction_scores_for_user(user["id"])
+    plans = get_preparation_plans_for_user(user["id"], limit=10)
+
+    if request.method == "POST":
+        if not latest:
+            flash("Please generate a placement prediction first. Planner uses your latest scores.")
+            return redirect(url_for("home"))
+
+        duration = _clamp_int(request.form.get("duration_weeks"), 1, 12, 1)
+        profile = {
+            "cgpa": latest["cgpa"],
+            "aptitude": latest["aptitude"],
+            "coding": latest["coding"],
+            "communication": latest["communication"],
+            "core": min(100.0, float(latest["cgpa"]) * 10.0) if latest["cgpa"] is not None else None,
+            "projects": int(latest["projects"] or 0),
+        }
+        plan = generate_personalized_preparation_plan(duration, profile)
+        created_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        conn = get_db_connection()
+        conn.execute(
+            """
+            INSERT INTO preparation_plans (user_id, selected_duration, selected_focus_area, generated_plan, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user["id"], int(plan["duration_weeks"]), "personalized", json.dumps(plan), created_at),
+        )
+        conn.commit()
+        plan_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.close()
+        flash("Weekly plan generated and saved.")
+        return redirect(url_for("weekly_planner_view", plan_id=plan_id))
+
+    return render_template("weekly_planner.html", username=user["username"], latest_scores=latest, plans=plans, plan=None, selected_plan_meta=None)
+
+
+@app.route("/weekly-planner/<int:plan_id>")
+def weekly_planner_view(plan_id):
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    latest = get_latest_prediction_scores_for_user(user["id"])
+    plans = get_preparation_plans_for_user(user["id"], limit=10)
+    row = get_preparation_plan_by_id(user["id"], plan_id)
+    if not row:
+        flash("Plan not found.")
+        return redirect(url_for("weekly_planner"))
+
+    try:
+        plan = json.loads(row["generated_plan"]) if row["generated_plan"] else None
+    except Exception:
+        plan = None
+
+    return render_template(
+        "weekly_planner.html",
+        username=user["username"],
+        latest_scores=latest,
+        plans=plans,
+        plan=plan,
+        selected_plan_meta={
+            "id": row["id"],
+            "created_at": row["created_at"],
+            "selected_duration": row["selected_duration"],
+            "selected_focus_area": row["selected_focus_area"],
+        },
+    )
 
 
 @app.route("/resume-analyzer", methods=["GET", "POST"])

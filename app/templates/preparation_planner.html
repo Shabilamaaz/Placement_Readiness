@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Weekly Preparation Planner{% endblock %}
+
+{% block body %}
+<div class="layout-wrap">
+    <div class="page-card page-card-wide">
+        <div class="page-head">
+            <div>
+                <h2>Weekly Preparation Planner</h2>
+                <p class="muted-text">Generate a realistic placement-prep roadmap (Monday to Saturday), save it, and revisit anytime.</p>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <p class="flash-msg">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="card-section">
+            <h3>Create a plan</h3>
+            <form method="post" action="{{ url_for('preparation_planner') }}" class="grid-form">
+                <select name="duration" required>
+                    <option value="4">4-week plan</option>
+                    <option value="6">6-week plan</option>
+                </select>
+                <select name="focus_area">
+                    <option value="mixed">Mixed Preparation</option>
+                    <option value="coding">Coding</option>
+                    <option value="aptitude">Aptitude</option>
+                    <option value="communication">Communication</option>
+                    <option value="core">Core Subjects</option>
+                </select>
+                <button type="submit" class="primary-btn">Generate & Save Plan</button>
+            </form>
+            <p class="muted-text top-gap">Tip: If you select Mixed, you’ll get a balanced plan with coding + aptitude + communication + core subjects, progressing each week.</p>
+        </div>
+
+        <div class="cards-grid">
+            <div class="card-section">
+                <h3>Previously generated</h3>
+                {% if plans %}
+                    <div class="table-wrap">
+                        <table class="history-table">
+                            <tr>
+                                <th>Created</th>
+                                <th>Duration</th>
+                                <th>Focus</th>
+                                <th>Action</th>
+                            </tr>
+                            {% for p in plans %}
+                            <tr>
+                                <td>{{ p["created_at"] }}</td>
+                                <td>{{ p["selected_duration"] }} weeks</td>
+                                <td>{{ p["selected_focus_area"]|capitalize }}</td>
+                                <td>
+                                    <a class="link-btn" href="{{ url_for('view_preparation_plan', plan_id=p['id']) }}">View</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="muted-text">No saved plans yet. Generate your first one above.</p>
+                {% endif %}
+            </div>
+
+            <div class="card-section">
+                <h3>How to use</h3>
+                <ul class="planner-list">
+                    <li>Follow the plan Mon–Sat; keep Sunday for rest or light revision.</li>
+                    <li>Track mistakes in an “error log” and revise them every Saturday.</li>
+                    <li>In later weeks, do mocks and record feedback.</li>
+                </ul>
+            </div>
+        </div>
+
+        {% if plan %}
+        <div class="card-section">
+            <div class="planner-head">
+                <h3>Plan Details</h3>
+                {% if selected_plan_meta %}
+                    <span class="pill">{{ selected_plan_meta["selected_duration"] }} weeks · {{ selected_plan_meta["selected_focus_area"]|capitalize }} · {{ selected_plan_meta["created_at"] }}</span>
+                {% endif %}
+            </div>
+
+            {% for w in plan["weeks"] %}
+            <div class="week-card">
+                <div class="week-card__head">
+                    <h4>Week {{ w["week"] }} · {{ w["stage"] }}</h4>
+                    <p class="muted-text">{{ w["goal"] }}</p>
+                </div>
+
+                <div class="day-grid">
+                    {% for d in w["days"] %}
+                    <div class="day-card">
+                        <div class="day-card__head">
+                            <h5>{{ d["day"] }}</h5>
+                            <span class="pill pill--hours">{{ d["total_hours"] }} hrs</span>
+                        </div>
+                        <p class="muted-text small-text">Difficulty: {{ d["difficulty"] }}</p>
+
+                        <div class="mini-section">
+                            <div class="mini-title">Topics & hour split</div>
+                            <ul class="mini-list">
+                                {% for t in d["topics"] %}
+                                <li><b>{{ t["hours"] }}h</b> · {{ t["topic"] }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                        <div class="mini-section">
+                            <div class="mini-title">Practice</div>
+                            <ul class="mini-list">
+                                {% for p in d["practice"] %}
+                                <li><b>{{ p["type"] }}</b> · {{ p["style"] }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="week-foot muted-text">
+                    Sunday (optional): rest + light revision + plan next week.
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Weekly Planner{% endblock %}
+
+{% block body %}
+<div class="layout-wrap">
+    <div class="page-card page-card-wide">
+        <div class="page-head">
+            <div>
+                <h2>Weekly Preparation Planner</h2>
+                <p class="muted-text">Optional planner generated from your <b>latest prediction scores</b>. Choose duration (1–12 weeks) and generate.</p>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <p class="flash-msg">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="cards-grid">
+            <div class="card-section">
+                <h3>Your latest scores</h3>
+                {% if latest_scores %}
+                    <p><b>CGPA:</b> {{ latest_scores["cgpa"] }} · <b>Aptitude:</b> {{ latest_scores["aptitude"] }} · <b>Coding:</b> {{ latest_scores["coding"] }} · <b>Communication:</b> {{ latest_scores["communication"] }}</p>
+                    <p class="muted-text small-text">Projects: {{ latest_scores["projects"] }} · Internships: {{ latest_scores["internships"] }} · Updated: {{ latest_scores["created_at"] }}</p>
+                {% else %}
+                    <p class="muted-text">No prediction scores found yet. Please generate a placement prediction first.</p>
+                {% endif %}
+            </div>
+
+            <div class="card-section">
+                <h3>Generate plan</h3>
+                <form method="post" action="{{ url_for('weekly_planner') }}" class="grid-form">
+                    <select name="duration_weeks" required>
+                        {% for w in range(1, 13) %}
+                            <option value="{{ w }}" {% if w == 1 %}selected{% endif %}>{{ w }} week{{ 's' if w > 1 else '' }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="primary-btn" type="submit" {% if not latest_scores %}disabled{% endif %}>Generate & Save Plan</button>
+                </form>
+                <p class="muted-text top-gap">Plan is Mon–Sat. Sunday is optional rest/revision day. Plan becomes more advanced week-by-week and gives more hours to weak areas.</p>
+            </div>
+        </div>
+
+        <div class="card-section">
+            <div class="planner-head">
+                <h3>Saved plans</h3>
+                <a class="link-btn" href="{{ url_for('home') }}">Back to Career Toolkit</a>
+            </div>
+            {% if plans %}
+                <div class="table-wrap">
+                    <table class="history-table">
+                        <tr>
+                            <th>Created</th>
+                            <th>Duration</th>
+                            <th>Action</th>
+                        </tr>
+                        {% for p in plans %}
+                        <tr>
+                            <td>{{ p["created_at"] }}</td>
+                            <td>{{ p["selected_duration"] }} weeks</td>
+                            <td><a class="link-btn" href="{{ url_for('weekly_planner_view', plan_id=p['id']) }}">View</a></td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            {% else %}
+                <p class="muted-text">No saved plans yet.</p>
+            {% endif %}
+        </div>
+
+        {% if plan %}
+        <div class="card-section">
+            <div class="planner-head">
+                <h3>Plan</h3>
+                {% if selected_plan_meta %}
+                    <span class="pill">{{ selected_plan_meta["selected_duration"] }} weeks · {{ selected_plan_meta["created_at"] }}</span>
+                {% endif %}
+            </div>
+
+            <div class="muted-text small-text">Tip: Weeks are collapsible — open one week at a time to avoid long scrolling.</div>
+
+            {% for w in plan["weeks"] %}
+            <details class="week-accordion" {% if w["week"] == 1 %}open{% endif %}>
+                <summary class="week-accordion__summary">
+                    <span><b>Week {{ w["week"] }}</b> · {{ w["stage"] }}</span>
+                    <span class="muted-text">{{ w["goal"] }}</span>
+                </summary>
+
+                <div class="week-card">
+                    <div class="day-grid">
+                        {% for d in w["days"] %}
+                        <div class="day-card">
+                            <div class="day-card__head">
+                                <h5>{{ d["day"] }}</h5>
+                                <span class="pill pill--hours">{{ d["total_hours"] }} hrs</span>
+                            </div>
+                            <p class="muted-text small-text">Difficulty: {{ d["difficulty"] }}</p>
+
+                            <div class="mini-section">
+                                <div class="mini-title">Topics & hour split</div>
+                                <ul class="mini-list">
+                                    {% for t in d["topics"] %}
+                                    <li><b>{{ t["hours"] }}h</b> · {{ t["topic"] }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+
+                            <div class="mini-section">
+                                <div class="mini-title">Practice</div>
+                                <ul class="mini-list">
+                                    {% for p in d["practice"] %}
+                                    <li><b>{{ p["type"] }}</b> · {{ p["style"] }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="week-foot muted-text">
+                        Sunday (optional): rest + light revision + plan next week.
+                    </div>
+                </div>
+            </details>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
