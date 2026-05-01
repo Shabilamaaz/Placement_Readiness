@@ -1,104 +1,96 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Placement Predictor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="layout-wrap">
-        <div class="page-card page-card-wide">
-            <h2>Placement Prediction System</h2>
-            <p class="muted-text center-text">Welcome, {{ username }}. Predict your placement chances and get smart guidance.</p>
+{% extends "base.html" %}
+{% block title %}Placement Predictor{% endblock %}
 
-            <div class="nav-links">
-                <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('resume_analyzer') }}">Resume Analyzer</a>
-                <a href="{{ url_for('profile') }}">Profile</a>
-                <a href="{{ url_for('companies') }}">Companies</a>
-                <a href="{{ url_for('leaderboard') }}">Leaderboard</a>
-                <a href="{{ url_for('admin') }}">Admin</a>
-                <a href="{{ url_for('logout') }}">Logout</a>
+{% block body %}
+<div class="layout-wrap">
+    <div class="page-card page-card-wide">
+        <div class="page-head">
+            <div>
+                <h2>Placement Prediction System</h2>
+                <p class="muted-text center-text">Welcome, {{ username }}. Predict your placement chances and get smart guidance.</p>
             </div>
-
-            <div class="card-section">
-                <p><b>Last Prediction:</b> {{ last_prediction or "No prediction yet" }}</p>
-            </div>
-
-            <div class="cards-grid">
-                <form action="{{ url_for('download_report') }}" method="get">
-                    <button class="primary-btn" type="submit">Download Report</button>
-                </form>
-                <form action="{{ url_for('send_email') }}" method="post">
-                    <input type="email" name="email" placeholder="Enter email" required>
-                    <button class="primary-btn" type="submit">Send Suggestions</button>
-                </form>
-            </div>
-
-            <form action="{{ url_for('predict') }}" method="post" class="grid-form" id="prediction-form">
-                <input type="number" name="semester" placeholder="Semester" required>
-                <input type="number" step="0.1" name="cgpa" placeholder="CGPA" required>
-                <input type="number" name="attendance" placeholder="Attendance" required>
-                <input type="number" name="aptitude" placeholder="Aptitude Score" required>
-                <input type="number" name="coding" placeholder="Coding Score" required>
-                <input type="number" name="communication" placeholder="Communication Score" required>
-                <input type="number" name="projects" placeholder="Projects Count" required>
-                <input type="number" name="internships" placeholder="Internships (0/1)" required>
-                <button type="submit" class="btn-primary full-width loading-btn" id="predict-btn">
-                    <span class="btn-text">Predict Placement</span>
-                    <span class="spinner hidden" id="predict-spinner"></span>
-                </button>
-            </form>
-
-            {% if prediction_text %}
-            <div class="result {% if prediction_text == 'Placed' %}success{% else %}fail{% endif %}">
-                {{ prediction_text }} (Chance: {{ chance }}%)
-            </div>
-            {% endif %}
-
-            {% if weak_areas %}
-            <div class="card-section">
-                <h3>Weak Areas</h3>
-                <p class="suggestion">{{ weak_areas }}</p>
-            </div>
-            {% endif %}
-
-            {% if suggestion %}
-            <div class="card-section">
-                <h3>Smart Suggestion</h3>
-                <p class="suggestion">{{ suggestion }}</p>
-            </div>
-            {% endif %}
-
-            {% if weekly_plan %}
-            <div class="card-section">
-                <h3>Weekly Plan (Mon-Fri)</h3>
-                <ul class="planner-list">
-                    {% for item in weekly_plan %}
-                    <li>{{ item }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-
-            {% if graph_image %}
-            <div class="graph-wrap">
-                <h3>Performance Graph</h3>
-                <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Performance graph">
-            </div>
-            {% endif %}
         </div>
-    </div>
-    <script>
-        const predictionForm = document.getElementById("prediction-form");
-        const predictButton = document.getElementById("predict-btn");
-        const buttonText = predictButton.querySelector(".btn-text");
-        const spinner = document.getElementById("predict-spinner");
 
-        predictionForm.addEventListener("submit", function () {
-            predictButton.disabled = true;
-            buttonText.classList.add("hidden");
-            spinner.classList.remove("hidden");
-        });
-    </script>
-</body>
-</html>
+        <div class="card-section">
+            <p><b>Last Prediction:</b> {{ last_prediction or "No prediction yet" }}</p>
+        </div>
+
+        <div class="cards-grid">
+            <form action="{{ url_for('download_report') }}" method="get">
+                <button class="primary-btn" type="submit">Download Report</button>
+            </form>
+        </div>
+
+        <form action="{{ url_for('predict') }}" method="post" class="grid-form" id="prediction-form">
+            <input type="number" name="semester" placeholder="Semester" required>
+            <input type="number" step="0.1" name="cgpa" placeholder="CGPA" required>
+            <input type="number" name="attendance" placeholder="Attendance" required>
+            <input type="number" name="aptitude" placeholder="Aptitude Score" required>
+            <input type="number" name="coding" placeholder="Coding Score" required>
+            <input type="number" name="communication" placeholder="Communication Score" required>
+            <input type="number" name="projects" placeholder="Projects Count" required>
+            <input type="number" name="internships" placeholder="Internships" required>
+            <button type="submit" class="btn-primary loading-btn" id="predict-btn">
+                <span class="btn-text">Predict Placement</span>
+                <span class="spinner hidden" id="predict-spinner"></span>
+            </button>
+        </form>
+
+        {% if prediction_text %}
+        <div class="result {% if prediction_text == 'Placed' %}success{% else %}fail{% endif %}">
+            {{ prediction_text }} (Chance: {{ chance }}%)
+        </div>
+
+        <div class="cards-grid" id="weekly-prep-planner">
+            <div class="card-section">
+                <h3>Insights (Weak/Strong)</h3>
+                {% if weak_areas %}
+                    <p><b>Weak Areas:</b> {{ weak_areas }}</p>
+                {% endif %}
+                {% if strong_areas %}
+                    <p><b>Strong Areas:</b> {{ strong_areas }}</p>
+                {% endif %}
+                {% if suggestion %}
+                    <div class="top-gap">
+                        <h3>Smart Suggestion</h3>
+                        <p class="suggestion">{{ suggestion }}</p>
+                    </div>
+                {% endif %}
+
+                {% if graph_image %}
+                    <div class="graph-wrap top-gap">
+                        <h3>Performance Graph</h3>
+                        <img src="{{ url_for('static', filename=graph_image) }}" class="graph-image" alt="Performance graph">
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="card-section">
+                <div class="planner-head">
+                    <h3>Weekly Preparation Planner</h3>
+                    <a class="link-btn" href="{{ url_for('weekly_planner') }}">Generate Plan</a>
+                </div>
+                <div class="top-gap">
+                    <p class="muted-text">Planner is optional. Click “Generate Plan” to choose your duration (1–12 weeks) and get a full roadmap based on your latest scores.</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const predictionForm = document.getElementById("prediction-form");
+    const predictButton = document.getElementById("predict-btn");
+    const buttonText = predictButton.querySelector(".btn-text");
+    const spinner = document.getElementById("predict-spinner");
+
+    predictionForm.addEventListener("submit", function () {
+        predictButton.disabled = true;
+        buttonText.classList.add("hidden");
+        spinner.classList.remove("hidden");
+    });
+</script>
+{% endblock %}
