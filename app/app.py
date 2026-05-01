@@ -28,6 +28,9 @@ app.permanent_session_lifetime = datetime.timedelta(minutes=10)
 
 serializer = URLSafeTimedSerializer(app.secret_key)
 
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin123"
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, "users.db")
 model_path = os.path.join(BASE_DIR, "..", "model", "model.pkl")
@@ -171,10 +174,25 @@ def get_current_user():
     user_id = session.get("user_id")
     if not user_id:
         return None
+    if user_id == "admin":
+        return {"id": "admin", "username": "admin"}
     conn = get_db_connection()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
     return user
+
+
+def admin_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+        if not session.get("is_admin"):
+            flash("Access denied. Admin privileges required.")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def is_valid_password_strength(password):
@@ -993,6 +1011,10 @@ def signup():
             flash("Username, email, and password are required.")
             return redirect(url_for("signup"))
 
+        if username == ADMIN_USERNAME:
+            flash("This username is reserved.")
+            return redirect(url_for("signup"))
+
         if "@" not in email or "." not in email:
             flash("Please enter a valid email address.")
             return redirect(url_for("signup"))
@@ -1024,6 +1046,19 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
+
+        # Check for admin login
+        if username == ADMIN_USERNAME:
+            if password == ADMIN_PASSWORD:
+                session["user_id"] = "admin"
+                session["is_admin"] = True
+                session["last_activity"] = datetime.datetime.now().isoformat()
+                return redirect(url_for("dashboard"))
+            else:
+                flash("Invalid username or password.")
+                return redirect(url_for("login"))
+
+        # Normal user login
         conn = get_db_connection()
         user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         conn.close()
@@ -1031,6 +1066,7 @@ def login():
         if user and check_password_hash(user["password"], password):
             session["user_id"] = user["id"]
             session["last_activity"] = datetime.datetime.now().isoformat()
+            session["is_admin"] = False
             return redirect(url_for("dashboard"))
         flash("Invalid username or password.")
         return redirect(url_for("login"))
@@ -1140,6 +1176,9 @@ def dashboard():
     user = get_current_user()
     if not user:
         return redirect(url_for("login"))
+
+    if user["id"] == "admin" and session.get("is_admin"):
+        return redirect(url_for("admin"))
 
     conn = get_db_connection()
     history = conn.execute(
@@ -1337,6 +1376,7 @@ def send_email():
 
 
 @app.route("/admin")
+@admin_required
 def admin():
     user = get_current_user()
     if not user:
