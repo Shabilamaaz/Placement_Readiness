@@ -27,7 +27,7 @@
                 <h2>Login</h2>
                 <p class="muted-text">Welcome back! Login to continue your placement preparation.</p>
             </div>
->>>>>>> 29fd63d29fedb21de549a10637d8884e67ee7648
+
         </div>
 
         {% with messages = get_flashed_messages() %}
@@ -43,6 +43,8 @@
             <input type="password" name="password" placeholder="Password" required>
             <button type="submit" class="btn-primary full-width-btn">Login</button>
         </form>
+
+        <p class="auth-link"><a href="{{ url_for('forgot_password') }}">Forgot Password?</a></p>
 
         <p class="auth-link">Don't have an account? <a href="{{ url_for('signup') }}">Signup</a></p>
     </div>

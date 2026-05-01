@@ -13,6 +13,7 @@ import textwrap
 import json
 from email.mime.text import MIMEText
 from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file
+from itsdangerous import URLSafeTimedSerializer
 import pickle
 import numpy as np
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -24,6 +25,8 @@ from reportlab.pdfgen import canvas
 app = Flask(__name__)
 app.secret_key = "simple-secret-key"
 app.permanent_session_lifetime = datetime.timedelta(minutes=10)
+
+serializer = URLSafeTimedSerializer(app.secret_key)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, "users.db")
@@ -214,6 +217,39 @@ def send_otp_email(email, otp):
         print(f"[OTP EMAIL] SMTP error: {smtp_error}")
     except Exception as unknown_error:
         print(f"[OTP EMAIL] Unexpected error: {unknown_error}")
+    return False
+
+
+def send_reset_email(email, reset_link):
+    print(f"[RESET EMAIL] Starting send for: {email}")
+    if not email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        print(f"[RESET EMAIL] Invalid recipient email: {email}")
+        return False
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        print("[RESET EMAIL] Missing EMAIL_ADDRESS or EMAIL_PASSWORD environment variable.")
+        return False
+
+    body = f"Click the link to reset your password: {reset_link}\nThis link is valid for 10 minutes."
+    message = MIMEText(body)
+    message["Subject"] = "Password Reset Link"
+    message["From"] = EMAIL_ADDRESS
+    message["To"] = email
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_ADDRESS, email, message.as_string())
+        print(f"[RESET EMAIL] Reset link sent successfully to: {email}")
+        return True
+    except smtplib.SMTPAuthenticationError as auth_error:
+        print(f"[RESET EMAIL] Authentication error: {auth_error}")
+    except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, OSError) as conn_error:
+        print(f"[RESET EMAIL] Connection error: {conn_error}")
+    except smtplib.SMTPException as smtp_error:
+        print(f"[RESET EMAIL] SMTP error: {smtp_error}")
+    except Exception as unknown_error:
+        print(f"[RESET EMAIL] Unexpected error: {unknown_error}")
     return False
 
 
@@ -1019,87 +1055,37 @@ def forgot_password():
             flash("Invalid email")
             return redirect(url_for("forgot_password"))
 
-        otp = f"{random.randint(100000, 999999)}"
-        expiry_time = datetime.datetime.now() + datetime.timedelta(minutes=10)
-        expiry_str = expiry_time.strftime("%Y-%m-%d %H:%M:%S")
+        # Generate reset token
+        token = serializer.dumps(email, salt="password-reset-salt")
+        reset_link = url_for("reset_password", token=token, _external=True)
 
-        conn.execute(
-            "UPDATE users SET reset_otp = ?, otp_expiry = ? WHERE id = ?",
-            (otp, expiry_str, user["id"]),
-        )
-        conn.commit()
         conn.close()
-
         session["reset_email"] = email
-        email_sent = send_otp_email(email, otp)
-        if email_sent:
-            flash("OTP sent successfully")
-            return redirect(url_for("verify_otp"))
 
-        print(f"OTP for {email} is: {otp}")
-        flash("Email sending failed. Check SMTP settings")
-        return redirect(url_for("forgot_password"))
+        # Try to send email
+        email_sent = send_reset_email(email, reset_link)
+        if email_sent:
+            flash("Reset link sent to your email")
+            return redirect(url_for("login"))
+        else:
+            print(f"Reset link for {email}: {reset_link}")
+            flash("Email sending failed. Check console for reset link")
+            return redirect(url_for("login"))
 
     return render_template("forgot_password.html")
 
 
-@app.route("/verify_otp", methods=["GET", "POST"])
-def verify_otp():
-    reset_email = session.get("reset_email")
-    if not reset_email:
-        flash("Please request OTP first.")
-        return redirect(url_for("forgot_password"))
-
-    if request.method == "POST":
-        otp = request.form.get("otp", "").strip()
-        if not otp:
-            flash("OTP is required.")
-            return redirect(url_for("verify_otp"))
-
-        conn = get_db_connection()
-        user = conn.execute(
-            "SELECT id, reset_otp, otp_expiry FROM users WHERE email = ?",
-            (reset_email,),
-        ).fetchone()
-
-        if not user or not user["reset_otp"] or not user["otp_expiry"]:
-            conn.close()
-            flash("Invalid OTP request. Please try again.")
-            return redirect(url_for("forgot_password"))
-
-        try:
-            expiry_time = datetime.datetime.strptime(user["otp_expiry"], "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            conn.close()
-            flash("OTP data is invalid. Request OTP again.")
-            return redirect(url_for("forgot_password"))
-
-        if datetime.datetime.now() > expiry_time:
-            conn.execute("UPDATE users SET reset_otp = NULL, otp_expiry = NULL WHERE id = ?", (user["id"],))
-            conn.commit()
-            conn.close()
-            flash("OTP expired. Please request a new OTP.")
-            return redirect(url_for("forgot_password"))
-
-        if otp != user["reset_otp"]:
-            conn.close()
-            flash("Invalid OTP.")
-            return redirect(url_for("verify_otp"))
-
-        conn.close()
-        session["otp_verified"] = True
-        flash("OTP verified. Please set a new password.")
-        return redirect(url_for("reset_password"))
-
-    return render_template("verify_otp.html")
-
-
 @app.route("/reset_password", methods=["GET", "POST"])
 def reset_password():
-    reset_email = session.get("reset_email")
-    otp_verified = session.get("otp_verified")
-    if not reset_email or not otp_verified:
-        flash("Please verify OTP first.")
+    token = request.args.get("token")
+    if not token:
+        flash("Invalid reset link.")
+        return redirect(url_for("forgot_password"))
+
+    try:
+        email = serializer.loads(token, salt="password-reset-salt", max_age=600)  # 10 minutes
+    except:
+        flash("Invalid or expired reset link.")
         return redirect(url_for("forgot_password"))
 
     if request.method == "POST":
@@ -1108,31 +1094,29 @@ def reset_password():
 
         if not new_password or not confirm_password:
             flash("Both password fields are required.")
-            return redirect(url_for("reset_password"))
+            return redirect(url_for("reset_password", token=token))
 
         if new_password != confirm_password:
             flash("Passwords do not match.")
-            return redirect(url_for("reset_password"))
+            return redirect(url_for("reset_password", token=token))
 
         if not is_valid_password_strength(new_password):
             flash("Password must be at least 6 characters and include letters and numbers.")
-            return redirect(url_for("reset_password"))
+            return redirect(url_for("reset_password", token=token))
 
         hashed_password = generate_password_hash(new_password)
         conn = get_db_connection()
         conn.execute(
             """
             UPDATE users
-            SET password = ?, reset_otp = NULL, otp_expiry = NULL
+            SET password = ?
             WHERE email = ?
             """,
-            (hashed_password, reset_email),
+            (hashed_password, email),
         )
         conn.commit()
         conn.close()
 
-        session.pop("reset_email", None)
-        session.pop("otp_verified", None)
         flash("Password reset successful. Please login.")
         return redirect(url_for("login"))
 
