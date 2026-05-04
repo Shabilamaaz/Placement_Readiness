@@ -24,8 +24,8 @@ A Flask-based web application that helps students analyze their placement readin
 
 - Python 
 - SQLite Database
-- HTML, CSS (Dark UI)
-- Machine Learning (Logistic Regression / Scikit-learn)
+- HTML, CSS 
+- Machine Learning
 
 ---
 
