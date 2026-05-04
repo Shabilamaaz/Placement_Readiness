@@ -22,7 +22,7 @@ A Flask-based web application that helps students analyze their placement readin
 
 ## 🛠️ Tech Stack
 
-- Python (Flask)
+- Python 
 - SQLite Database
 - HTML, CSS (Dark UI)
 - Machine Learning (Logistic Regression / Scikit-learn)
